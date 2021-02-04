@@ -1,34 +1,17 @@
-from __future__ import print_function
+#from __future__ import print_function
 
 import os
 import random as rn
-
-# import matplotlib
-# matplotlib.use('Agg')
 import numpy as np
 import tensorflow as tf
 
-### We modified Pahikkala et al. (2014) source code for cross-val process ###
 
-os.environ['PYTHONHASHSEED'] = '0'
-
-np.random.seed(1)
-rn.seed(1)
-
-session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
-# from keras import backend as K
-from tensorflow.python.keras import backend as K
-
-tf.compat.v1.set_random_seed(0)
-sess = tf.compat.v1.Session(graph=tf.compat.v1.get_default_graph(), config=session_conf)
-K.set_session(sess)
 
 from datahelper import *
 from arguments import argparser, logging
 
 import keras
-from keras.models import Sequential
-from keras.layers import Dropout, Activation
+from keras.layers import Dropout
 
 from keras.layers import Conv1D, GlobalMaxPooling1D
 from keras.layers import Input, Embedding, Dense
@@ -44,6 +27,21 @@ from emetrics import get_cindex
 TABSY = "\t"
 figdir = "figures/"
 
+
+### We modified Pahikkala et al. (2014) source code for cross-val process ###
+
+os.environ['PYTHONHASHSEED'] = '0'
+
+np.random.seed(1)
+rn.seed(1)
+
+session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
+# from keras import backend as K
+from tensorflow.python.keras import backend as K
+
+tf.compat.v1.set_random_seed(0)
+sess = tf.compat.v1.Session(graph=tf.compat.v1.get_default_graph(), config=session_conf)
+K.set_session(sess)
 
 def build_combined_onehot(FLAGS, NUM_FILTERS, FILTER_LENGTH1, FILTER_LENGTH2):
     XDinput = Input(shape=(FLAGS.max_smi_len, FLAGS.charsmiset_size))
@@ -132,100 +130,6 @@ def build_combined_categorical(FLAGS, NUM_FILTERS, FILTER_LENGTH1, FILTER_LENGTH
                              metrics=[cindex_score])  # , metrics=['cindex_score']
     print(interactionModel.summary())
     plot_model(interactionModel, to_file='figures/build_combined_categorical.png')
-
-    return interactionModel
-
-
-def build_single_drug(FLAGS, NUM_FILTERS, FILTER_LENGTH1, FILTER_LENGTH2):
-    interactionModel = Sequential()
-    XTmodel = Sequential()
-    XTmodel.add(Activation('linear', input_shape=(FLAGS.target_count,)))
-
-    encode_smiles = Sequential()
-    encode_smiles.add(Embedding(input_dim=FLAGS.charsmiset_size + 1, output_dim=128, input_length=FLAGS.max_smi_len))
-    encode_smiles.add(Conv1D(filters=NUM_FILTERS, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid',
-                             strides=1))  # input_shape=(MAX_SMI_LEN, SMI_EMBEDDING_DIMS)
-    encode_smiles.add(
-        Conv1D(filters=NUM_FILTERS * 2, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid', strides=1))
-    encode_smiles.add(
-        Conv1D(filters=NUM_FILTERS * 3, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid', strides=1))
-    encode_smiles.add(GlobalMaxPooling1D())
-
-    interactionModel.add(Merge([encode_smiles, XTmodel], mode='concat', concat_axis=1))
-    # interactionModel.add(layers.merge.Concatenate([XDmodel, XTmodel]))
-
-    # Fully connected 
-    interactionModel.add(Dense(1024, activation='relu'))  # 1024
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(1024, activation='relu'))  # 1024
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(512, activation='relu'))
-
-    interactionModel.add(Dense(1, kernel_initializer='normal'))
-    interactionModel.compile(optimizer='adam', loss='mean_squared_error', metrics=[cindex_score])
-
-    print(interactionModel.summary())
-    plot_model(interactionModel, to_file='figures/build_single_drug.png')
-
-    return interactionModel
-
-
-def build_single_prot(FLAGS, NUM_FILTERS, FILTER_LENGTH1, FILTER_LENGTH2):
-    interactionModel = Sequential()
-    XDmodel = Sequential()
-    XDmodel.add(Activation('linear', input_shape=(FLAGS.drugcount,)))
-
-    XTmodel1 = Sequential()
-    XTmodel1.add(Embedding(input_dim=FLAGS.charseqset_size + 1, output_dim=128, input_length=FLAGS.max_seq_len))
-    XTmodel1.add(Conv1D(filters=NUM_FILTERS, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid',
-                        strides=1))  # input_shape=(MAX_SEQ_LEN, SEQ_EMBEDDING_DIMS)
-    XTmodel1.add(
-        Conv1D(filters=NUM_FILTERS * 2, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid', strides=1))
-    XTmodel1.add(
-        Conv1D(filters=NUM_FILTERS * 3, kernel_size=FILTER_LENGTH1, activation='relu', padding='valid', strides=1))
-    XTmodel1.add(GlobalMaxPooling1D())
-
-    interactionModel.add(Merge([XDmodel, XTmodel1], mode='concat', concat_axis=1))
-
-    # Fully connected 
-    interactionModel.add(Dense(1024, activation='relu'))
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(1024, activation='relu'))
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(512, activation='relu'))
-
-    interactionModel.add(Dense(1, kernel_initializer='normal'))
-    interactionModel.compile(optimizer='adam', loss='mean_squared_error', metrics=[cindex_score])
-
-    print(interactionModel.summary())
-    plot_model(interactionModel, to_file='figures/build_single_protein.png')
-
-    return interactionModel
-
-
-def build_baseline(FLAGS, NUM_FILTERS, FILTER_LENGTH1, FILTER_LENGTH2):
-    interactionModel = Sequential()
-
-    XDmodel = Sequential()
-    XDmodel.add(Dense(1, activation='linear', input_shape=(FLAGS.drug_count,)))
-
-    XTmodel = Sequential()
-    XTmodel.add(Dense(1, activation='linear', input_shape=(FLAGS.target_count,)))
-
-    interactionModel.add(Merge([XDmodel, XTmodel], mode='concat', concat_axis=1))
-
-    # Fully connected 
-    interactionModel.add(Dense(1024, activation='relu'))
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(1024, activation='relu'))
-    interactionModel.add(Dropout(0.1))
-    interactionModel.add(Dense(512, activation='relu'))
-
-    interactionModel.add(Dense(1, kernel_initializer='normal'))
-    interactionModel.compile(optimizer='adam', loss='mean_squared_error', metrics=[cindex_score])
-
-    print(interactionModel.summary())
-    plot_model(interactionModel, to_file='figures/build_baseline.png')
 
     return interactionModel
 
